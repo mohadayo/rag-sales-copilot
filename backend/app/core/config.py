@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     chunk_size: int = 500
     chunk_overlap: int = 50
     top_k: int = 5
+    cors_origins: str = "http://localhost:3000"
     chroma_persist_dir: str = "./chroma_data"
     upload_dir: str = "./uploads"
 
