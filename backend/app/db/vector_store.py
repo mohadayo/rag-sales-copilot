@@ -36,6 +36,7 @@ def add_chunks(
     filename: str,
     category: str,
     industry_tags: list[str],
+    uploaded_at: str = "",
 ) -> int:
     """チャンクをベクトルDBに追加"""
     if not chunks:
@@ -52,6 +53,7 @@ def add_chunks(
             "category": category,
             "industry_tags": ",".join(industry_tags),
             "chunk_index": i,
+            "uploaded_at": uploaded_at,
         }
         for i in range(len(chunks))
     ]
@@ -117,6 +119,7 @@ def list_documents() -> list[dict]:
                 "industry_tags": meta.get("industry_tags", "").split(",")
                 if meta.get("industry_tags")
                 else [],
+                "uploaded_at": meta.get("uploaded_at", ""),
                 "chunk_count": 0,
             }
         doc_map[doc_id]["chunk_count"] += 1

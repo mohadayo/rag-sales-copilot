@@ -2,7 +2,7 @@
 
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
@@ -60,6 +60,9 @@ async def upload_document(
         # タグ解析
         tags = [t.strip() for t in industry_tags.split(",") if t.strip()]
 
+        # アップロード日時を記録
+        uploaded_at = datetime.now(timezone.utc).isoformat()
+
         # ベクトルDBに登録
         chunk_count = add_chunks(
             doc_id=doc_id,
@@ -67,6 +70,7 @@ async def upload_document(
             filename=file.filename,
             category=category.value,
             industry_tags=tags,
+            uploaded_at=uploaded_at,
         )
 
         return DocumentUploadResponse(
