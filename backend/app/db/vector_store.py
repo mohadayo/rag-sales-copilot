@@ -30,6 +30,16 @@ def get_collection() -> chromadb.Collection:
     )
 
 
+def check_health() -> dict:
+    """ベクトルDBの接続状態を確認"""
+    try:
+        collection = get_collection()
+        count = collection.count()
+        return {"status": "ok", "document_chunks": count}
+    except Exception as e:
+        return {"status": "error", "detail": str(e)}
+
+
 def add_chunks(
     doc_id: str,
     chunks: list[str],

@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.chat import router as chat_router
 from app.api.documents import router as documents_router
 from app.core.config import settings
+from app.db.vector_store import check_health as check_vector_store_health
 
 app = FastAPI(
     title="Sales RAG Copilot API",
@@ -27,4 +28,13 @@ app.include_router(chat_router)
 
 @app.get("/api/health")
 async def health():
-    return {"status": "ok", "service": "sales-rag-copilot"}
+    vector_store = check_vector_store_health()
+    overall_status = "ok" if vector_store["status"] == "ok" else "degraded"
+    return {
+        "status": overall_status,
+        "service": "sales-rag-copilot",
+        "version": app.version,
+        "components": {
+            "vector_store": vector_store,
+        },
+    }
