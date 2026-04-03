@@ -1,10 +1,14 @@
 """テキスト抽出モジュール: PDF, DOCX, PPTX, TXT, Markdown に対応"""
 
+import logging
 import os
+
+logger = logging.getLogger(__name__)
 
 
 def extract_text(file_path: str) -> str:
     ext = os.path.splitext(file_path)[1].lower()
+    logger.info("テキスト抽出開始: file=%s, ext=%s", os.path.basename(file_path), ext)
     extractors = {
         ".pdf": _extract_pdf,
         ".docx": _extract_docx,
@@ -15,8 +19,11 @@ def extract_text(file_path: str) -> str:
     }
     extractor = extractors.get(ext)
     if extractor is None:
+        logger.error("非対応のファイル形式: %s", ext)
         raise ValueError(f"Unsupported file type: {ext}")
-    return extractor(file_path)
+    text = extractor(file_path)
+    logger.info("テキスト抽出完了: %d 文字", len(text))
+    return text
 
 
 def _extract_pdf(file_path: str) -> str:

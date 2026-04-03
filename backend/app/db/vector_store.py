@@ -1,10 +1,14 @@
 """ChromaDB ベクトルストア"""
 
+import logging
+
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 
 from app.core.config import settings
 from app.core.embeddings import generate_embedding, generate_embeddings
+
+logger = logging.getLogger(__name__)
 
 _client: chromadb.ClientAPI | None = None
 COLLECTION_NAME = "sales_documents"
@@ -13,6 +17,7 @@ COLLECTION_NAME = "sales_documents"
 def _get_client() -> chromadb.ClientAPI:
     global _client
     if _client is None:
+        logger.info("ChromaDBクライアントを初期化します: persist_dir=%s", settings.chroma_persist_dir)
         _client = chromadb.Client(
             ChromaSettings(
                 persist_directory=settings.chroma_persist_dir,
@@ -50,8 +55,10 @@ def add_chunks(
 ) -> int:
     """チャンクをベクトルDBに追加"""
     if not chunks:
+        logger.warning("空のチャンクリストが渡されました: doc_id=%s", doc_id)
         return 0
 
+    logger.info("チャンク追加開始: doc_id=%s, filename=%s, chunks=%d", doc_id, filename, len(chunks))
     collection = get_collection()
     embeddings = generate_embeddings(chunks)
 
@@ -74,6 +81,7 @@ def add_chunks(
         documents=chunks,
         metadatas=metadatas,
     )
+    logger.info("チャンク追加完了: doc_id=%s, %d チャンク登録", doc_id, len(chunks))
     return len(chunks)
 
 
@@ -84,6 +92,7 @@ def search(
     industry_filter: str | None = None,
 ) -> dict:
     """ベクトル類似度検索"""
+    logger.info("ベクトル検索開始: query=%r, category=%s, industry=%s", query[:80], category_filter, industry_filter)
     collection = get_collection()
     query_embedding = generate_embedding(query)
 
@@ -101,16 +110,22 @@ def search(
         where=where if where else None,
         include=["documents", "metadatas", "distances"],
     )
+    num_results = len(results.get("documents", [[]])[0])
+    logger.info("ベクトル検索完了: %d 件取得", num_results)
     return results
 
 
 def delete_document(doc_id: str) -> None:
     """ドキュメントの全チャンクを削除"""
+    logger.info("ドキュメント削除開始: doc_id=%s", doc_id)
     collection = get_collection()
     # doc_idに一致するチャンクを検索して削除
     results = collection.get(where={"doc_id": doc_id})
     if results["ids"]:
         collection.delete(ids=results["ids"])
+        logger.info("ドキュメント削除完了: doc_id=%s, %d チャンク削除", doc_id, len(results["ids"]))
+    else:
+        logger.warning("削除対象のチャンクが見つかりません: doc_id=%s", doc_id)
 
 
 def list_documents() -> list[dict]:

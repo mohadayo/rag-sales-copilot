@@ -1,10 +1,14 @@
 """RAG回答生成モジュール"""
 
+import logging
+
 from openai import OpenAI
 
 from app.core.config import settings
 from app.db.vector_store import search
 from app.models.schemas import ChatRequest, ChatResponse, OutputFormat, SourceReference
+
+logger = logging.getLogger(__name__)
 
 _client: OpenAI | None = None
 
@@ -12,6 +16,7 @@ _client: OpenAI | None = None
 def _get_client() -> OpenAI:
     global _client
     if _client is None:
+        logger.info("OpenAI クライアントを初期化します (model=%s)", settings.openai_model)
         _client = OpenAI(api_key=settings.openai_api_key)
     return _client
 
@@ -49,6 +54,13 @@ SYSTEM_PROMPT = """あなたは営業提案支援AIアシスタントです。
 def generate_rag_response(request: ChatRequest) -> ChatResponse:
     """RAGパイプライン: 検索 → コンテキスト構築 → LLM回答生成"""
 
+    logger.info(
+        "RAGパイプライン開始: query=%r, format=%s, category=%s",
+        request.query[:80],
+        request.output_format.value,
+        request.category_filter,
+    )
+
     # 1. ベクトル検索
     results = search(
         query=request.query,
@@ -79,6 +91,8 @@ def generate_rag_response(request: ChatRequest) -> ChatResponse:
 
     context = "\n\n".join(context_parts)
 
+    logger.info("検索結果: %d 件のチャンクを取得", len(documents))
+
     # 3. LLM回答生成
     format_instruction = FORMAT_INSTRUCTIONS[request.output_format]
     system_message = SYSTEM_PROMPT.format(format_instruction=format_instruction)
@@ -102,6 +116,12 @@ def generate_rag_response(request: ChatRequest) -> ChatResponse:
     )
 
     answer = response.choices[0].message.content or "回答を生成できませんでした。"
+
+    logger.info(
+        "LLM回答生成完了: tokens_used=%s, answer_length=%d",
+        getattr(response.usage, "total_tokens", "N/A"),
+        len(answer),
+    )
 
     return ChatResponse(
         answer=answer,

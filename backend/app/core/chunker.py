@@ -1,12 +1,17 @@
 """テキストチャンク化モジュール"""
 
+import logging
+
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 def chunk_text(text: str) -> list[str]:
     """テキストを指定サイズのチャンクに分割する（文単位で分割）"""
     chunk_size = settings.chunk_size
     overlap = settings.chunk_overlap
+    logger.info("チャンク化開始: text_length=%d, chunk_size=%d, overlap=%d", len(text), chunk_size, overlap)
 
     sentences = _split_into_sentences(text)
     chunks = []
@@ -34,6 +39,7 @@ def chunk_text(text: str) -> list[str]:
     if current_chunk:
         chunks.append("".join(current_chunk))
 
+    logger.info("チャンク化完了: %d チャンク生成", len(chunks))
     return chunks
 
 
