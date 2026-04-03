@@ -1,5 +1,6 @@
 """資料管理API"""
 
+import logging
 import os
 import uuid
 from datetime import datetime, timezone
@@ -17,9 +18,12 @@ from app.models.schemas import (
     DocumentUploadResponse,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".doc", ".pptx", ".txt", ".md"}
+MAX_FILE_SIZE = settings.max_file_size
 
 
 @router.post("/upload", response_model=DocumentUploadResponse)
@@ -45,6 +49,17 @@ async def upload_document(
     file_path = os.path.join(settings.upload_dir, f"{doc_id}{ext}")
 
     content = await file.read()
+
+    # ファイルサイズバリデーション
+    if len(content) > MAX_FILE_SIZE:
+        max_mb = MAX_FILE_SIZE / (1024 * 1024)
+        raise HTTPException(
+            status_code=400,
+            detail=f"ファイルサイズが上限を超えています（最大 {max_mb:.0f}MB）",
+        )
+
+    logger.info("ファイルアップロード: filename=%s, size=%d bytes, category=%s", file.filename, len(content), category.value)
+
     with open(file_path, "wb") as f:
         f.write(content)
 
@@ -73,6 +88,8 @@ async def upload_document(
             uploaded_at=uploaded_at,
         )
 
+        logger.info("ドキュメント登録完了: doc_id=%s, filename=%s, chunks=%d", doc_id, file.filename, chunk_count)
+
         return DocumentUploadResponse(
             id=doc_id,
             filename=file.filename,
@@ -81,8 +98,14 @@ async def upload_document(
         )
     except HTTPException:
         raise
+    except ValueError as e:
+        logger.warning("テキスト抽出エラー: %s", e)
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        raise HTTPException(status_code=400, detail=f"ファイル処理エラー: {str(e)}")
     except Exception as e:
         # 失敗時はファイルをクリーンアップ
+        logger.exception("ドキュメント処理中に予期しないエラーが発生: filename=%s", file.filename)
         if os.path.exists(file_path):
             os.remove(file_path)
         raise HTTPException(status_code=500, detail=f"処理エラー: {str(e)}")
@@ -101,5 +124,10 @@ async def get_documents():
 @router.delete("/{doc_id}")
 async def remove_document(doc_id: str):
     """資料を削除"""
-    delete_document(doc_id)
-    return {"message": "削除しました", "doc_id": doc_id}
+    logger.info("ドキュメント削除リクエスト: doc_id=%s", doc_id)
+    try:
+        delete_document(doc_id)
+        return {"message": "削除しました", "doc_id": doc_id}
+    except Exception as e:
+        logger.exception("ドキュメント削除エラー: doc_id=%s", doc_id)
+        raise HTTPException(status_code=500, detail=f"削除エラー: {str(e)}")
