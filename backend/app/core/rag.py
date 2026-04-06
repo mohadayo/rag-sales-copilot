@@ -1,10 +1,14 @@
 """RAG回答生成モジュール"""
 
+import logging
+
 from openai import OpenAI
 
 from app.core.config import settings
 from app.db.vector_store import search
 from app.models.schemas import ChatRequest, ChatResponse, OutputFormat, SourceReference
+
+logger = logging.getLogger(__name__)
 
 _client: OpenAI | None = None
 
@@ -50,6 +54,7 @@ def generate_rag_response(request: ChatRequest) -> ChatResponse:
     """RAGパイプライン: 検索 → コンテキスト構築 → LLM回答生成"""
 
     # 1. ベクトル検索
+    logger.info("RAGパイプライン開始: query='%s...'", request.query[:50])
     results = search(
         query=request.query,
         category_filter=request.category_filter.value if request.category_filter else None,
@@ -63,8 +68,16 @@ def generate_rag_response(request: ChatRequest) -> ChatResponse:
     metadatas = results.get("metadatas", [[]])[0]
     distances = results.get("distances", [[]])[0]
 
+    logger.info("ベクトル検索完了: %d 件の参考資料を取得", len(documents))
+
     for i, (doc, meta, dist) in enumerate(zip(documents, metadatas, distances)):
         relevance_score = max(0, 1 - dist)  # cosine距離をスコアに変換
+        logger.debug(
+            "参考資料 %d: filename=%s, relevance_score=%.3f",
+            i + 1,
+            meta.get("filename", "不明"),
+            relevance_score,
+        )
         context_parts.append(
             f"【参考資料{i + 1}: {meta['filename']}（{meta['category']}）】\n{doc}"
         )
@@ -79,6 +92,9 @@ def generate_rag_response(request: ChatRequest) -> ChatResponse:
 
     context = "\n\n".join(context_parts)
 
+    if not context:
+        logger.warning("関連する参考資料が見つかりませんでした: query='%s...'", request.query[:50])
+
     # 3. LLM回答生成
     format_instruction = FORMAT_INSTRUCTIONS[request.output_format]
     system_message = SYSTEM_PROMPT.format(format_instruction=format_instruction)
@@ -90,6 +106,7 @@ def generate_rag_response(request: ChatRequest) -> ChatResponse:
 {context if context else "（関連する資料が見つかりませんでした）"}
 """
 
+    logger.info("LLM回答生成開始: model=%s, output_format=%s", settings.openai_model, request.output_format.value)
     client = _get_client()
     response = client.chat.completions.create(
         model=settings.openai_model,
@@ -102,6 +119,11 @@ def generate_rag_response(request: ChatRequest) -> ChatResponse:
     )
 
     answer = response.choices[0].message.content or "回答を生成できませんでした。"
+    logger.info(
+        "LLM回答生成完了: answer_length=%d, usage=%s",
+        len(answer),
+        response.usage,
+    )
 
     return ChatResponse(
         answer=answer,

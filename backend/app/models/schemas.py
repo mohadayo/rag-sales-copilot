@@ -1,7 +1,6 @@
-from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class OutputFormat(str, Enum):
@@ -41,10 +40,17 @@ class DocumentListResponse(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    query: str
+    query: str = Field(..., min_length=1, max_length=2000, description="質問文（最大2000文字）")
     output_format: OutputFormat = OutputFormat.bullet
     category_filter: CategoryType | None = None
     industry_filter: str | None = None
+
+    @field_validator("query")
+    @classmethod
+    def query_must_not_be_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("質問文は空白のみでは無効です")
+        return v.strip()
 
 
 class SourceReference(BaseModel):
