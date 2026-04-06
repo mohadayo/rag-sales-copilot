@@ -1,6 +1,9 @@
 """テキスト抽出モジュール: PDF, DOCX, PPTX, TXT, Markdown に対応"""
 
+import logging
 import os
+
+logger = logging.getLogger(__name__)
 
 
 def extract_text(file_path: str) -> str:
@@ -10,13 +13,16 @@ def extract_text(file_path: str) -> str:
         ".docx": _extract_docx,
         ".doc": _extract_docx,
         ".pptx": _extract_pptx,
-        ".txt": _extract_text,
-        ".md": _extract_text,
+        ".txt": _extract_plain_text,
+        ".md": _extract_plain_text,
     }
     extractor = extractors.get(ext)
     if extractor is None:
         raise ValueError(f"Unsupported file type: {ext}")
-    return extractor(file_path)
+    logger.info("テキスト抽出開始: file_path=%s, ext=%s", file_path, ext)
+    text = extractor(file_path)
+    logger.info("テキスト抽出完了: file_path=%s, text_length=%d", file_path, len(text))
+    return text
 
 
 def _extract_pdf(file_path: str) -> str:
@@ -53,6 +59,19 @@ def _extract_pptx(file_path: str) -> str:
     return "\n".join(texts)
 
 
-def _extract_text(file_path: str) -> str:
-    with open(file_path, "r", encoding="utf-8") as f:
-        return f.read()
+def _extract_plain_text(file_path: str) -> str:
+    """テキスト・Markdownファイルを読み込む（エンコーディング自動検出）"""
+    encodings = ["utf-8", "utf-8-sig", "shift-jis", "euc-jp", "latin-1"]
+    for encoding in encodings:
+        try:
+            with open(file_path, "r", encoding=encoding) as f:
+                content = f.read()
+            logger.debug("テキストファイル読み込み成功: encoding=%s, file=%s", encoding, file_path)
+            return content
+        except UnicodeDecodeError:
+            logger.debug("エンコーディング %s での読み込み失敗。次を試行: %s", encoding, file_path)
+            continue
+    # フォールバック: バイナリ読み込みで無効文字を置換
+    logger.warning("全エンコーディング失敗。バイナリモードで読み込み: %s", file_path)
+    with open(file_path, "rb") as f:
+        return f.read().decode("utf-8", errors="replace")

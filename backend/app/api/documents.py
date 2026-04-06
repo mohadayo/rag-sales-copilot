@@ -1,5 +1,6 @@
 """資料管理API"""
 
+import logging
 import os
 import uuid
 from datetime import datetime, timezone
@@ -17,9 +18,13 @@ from app.models.schemas import (
     DocumentUploadResponse,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".doc", ".pptx", ".txt", ".md"}
+MAX_FILE_SIZE_MB = 50
+MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
 
 @router.post("/upload", response_model=DocumentUploadResponse)
@@ -45,6 +50,21 @@ async def upload_document(
     file_path = os.path.join(settings.upload_dir, f"{doc_id}{ext}")
 
     content = await file.read()
+
+    # ファイルサイズチェック
+    if len(content) > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"ファイルサイズが上限 ({MAX_FILE_SIZE_MB}MB) を超えています",
+        )
+
+    logger.info(
+        "ファイルアップロード開始: filename=%s, size=%d bytes, category=%s",
+        file.filename,
+        len(content),
+        category.value,
+    )
+
     with open(file_path, "wb") as f:
         f.write(content)
 
@@ -73,6 +93,12 @@ async def upload_document(
             uploaded_at=uploaded_at,
         )
 
+        logger.info(
+            "ファイルアップロード完了: doc_id=%s, filename=%s, chunk_count=%d",
+            doc_id,
+            file.filename,
+            chunk_count,
+        )
         return DocumentUploadResponse(
             id=doc_id,
             filename=file.filename,
@@ -85,13 +111,21 @@ async def upload_document(
         # 失敗時はファイルをクリーンアップ
         if os.path.exists(file_path):
             os.remove(file_path)
+        logger.error(
+            "ファイルアップロードエラー: filename=%s, error=%s",
+            file.filename,
+            str(e),
+            exc_info=True,
+        )
         raise HTTPException(status_code=500, detail=f"処理エラー: {str(e)}")
 
 
 @router.get("/", response_model=DocumentListResponse)
 async def get_documents():
     """登録済み資料一覧を取得"""
+    logger.debug("ドキュメント一覧取得リクエスト")
     docs = list_documents()
+    logger.info("ドキュメント一覧取得: %d 件", len(docs))
     return DocumentListResponse(
         documents=[DocumentMetadata(**doc) for doc in docs],
         total=len(docs),
@@ -101,5 +135,7 @@ async def get_documents():
 @router.delete("/{doc_id}")
 async def remove_document(doc_id: str):
     """資料を削除"""
+    logger.info("ドキュメント削除リクエスト: doc_id=%s", doc_id)
     delete_document(doc_id)
+    logger.info("ドキュメント削除完了: doc_id=%s", doc_id)
     return {"message": "削除しました", "doc_id": doc_id}

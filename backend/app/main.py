@@ -1,5 +1,7 @@
 """Sales RAG Copilot - FastAPI Backend"""
 
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -7,6 +9,12 @@ from app.api.chat import router as chat_router
 from app.api.documents import router as documents_router
 from app.core.config import settings
 from app.db.vector_store import check_health as check_vector_store_health
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Sales RAG Copilot API",
@@ -25,11 +33,15 @@ app.add_middleware(
 app.include_router(documents_router)
 app.include_router(chat_router)
 
+logger.info("Sales RAG Copilot API 起動完了 (version=%s)", app.version)
+
 
 @app.get("/api/health")
 async def health():
+    logger.debug("ヘルスチェックリクエスト受信")
     vector_store = check_vector_store_health()
     overall_status = "ok" if vector_store["status"] == "ok" else "degraded"
+    logger.info("ヘルスチェック結果: status=%s", overall_status)
     return {
         "status": overall_status,
         "service": "sales-rag-copilot",

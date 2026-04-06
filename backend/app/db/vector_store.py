@@ -1,10 +1,13 @@
 """ChromaDB ベクトルストア"""
 
+import logging
+
 import chromadb
-from chromadb.config import Settings as ChromaSettings
 
 from app.core.config import settings
 from app.core.embeddings import generate_embedding, generate_embeddings
+
+logger = logging.getLogger(__name__)
 
 _client: chromadb.ClientAPI | None = None
 COLLECTION_NAME = "sales_documents"
@@ -13,11 +16,9 @@ COLLECTION_NAME = "sales_documents"
 def _get_client() -> chromadb.ClientAPI:
     global _client
     if _client is None:
-        _client = chromadb.Client(
-            ChromaSettings(
-                persist_directory=settings.chroma_persist_dir,
-                anonymized_telemetry=False,
-            )
+        logger.info("ChromaDB クライアント初期化: persist_dir=%s", settings.chroma_persist_dir)
+        _client = chromadb.PersistentClient(
+            path=settings.chroma_persist_dir,
         )
     return _client
 
@@ -35,8 +36,10 @@ def check_health() -> dict:
     try:
         collection = get_collection()
         count = collection.count()
+        logger.debug("ChromaDB ヘルスチェック OK: document_chunks=%d", count)
         return {"status": "ok", "document_chunks": count}
     except Exception as e:
+        logger.error("ChromaDB ヘルスチェック失敗: %s", str(e), exc_info=True)
         return {"status": "error", "detail": str(e)}
 
 
@@ -50,8 +53,10 @@ def add_chunks(
 ) -> int:
     """チャンクをベクトルDBに追加"""
     if not chunks:
+        logger.warning("add_chunks: チャンクが空です。doc_id=%s", doc_id)
         return 0
 
+    logger.info("チャンク追加開始: doc_id=%s, filename=%s, chunk_count=%d", doc_id, filename, len(chunks))
     collection = get_collection()
     embeddings = generate_embeddings(chunks)
 
@@ -74,6 +79,7 @@ def add_chunks(
         documents=chunks,
         metadatas=metadatas,
     )
+    logger.info("チャンク追加完了: doc_id=%s, chunk_count=%d", doc_id, len(chunks))
     return len(chunks)
 
 
@@ -84,6 +90,13 @@ def search(
     industry_filter: str | None = None,
 ) -> dict:
     """ベクトル類似度検索"""
+    logger.info(
+        "ベクトル検索開始: query='%s...', top_k=%s, category_filter=%s, industry_filter=%s",
+        query[:30],
+        top_k or settings.top_k,
+        category_filter,
+        industry_filter,
+    )
     collection = get_collection()
     query_embedding = generate_embedding(query)
 
@@ -106,11 +119,15 @@ def search(
 
 def delete_document(doc_id: str) -> None:
     """ドキュメントの全チャンクを削除"""
+    logger.info("ドキュメント削除開始: doc_id=%s", doc_id)
     collection = get_collection()
     # doc_idに一致するチャンクを検索して削除
     results = collection.get(where={"doc_id": doc_id})
     if results["ids"]:
         collection.delete(ids=results["ids"])
+        logger.info("ドキュメント削除完了: doc_id=%s, deleted_chunks=%d", doc_id, len(results["ids"]))
+    else:
+        logger.warning("ドキュメント削除: 対象チャンクが見つかりません。doc_id=%s", doc_id)
 
 
 def list_documents() -> list[dict]:
