@@ -68,6 +68,35 @@ class TestExtractText:
         assert "タイトル" in result
         assert "本文" in result
 
+    def test_docx_file(self, tmp_path):
+        """DOCXファイルのテキスト抽出"""
+        from docx import Document
+
+        doc = Document()
+        doc.add_paragraph("DOCX文書のテスト段落です。")
+        doc.add_paragraph("2番目の段落です。")
+        test_file = tmp_path / "test.docx"
+        doc.save(str(test_file))
+        result = extract_text(str(test_file))
+        assert "DOCX文書のテスト段落" in result
+        assert "2番目の段落" in result
+
+    def test_pptx_file(self, tmp_path):
+        """PPTXファイルのテキスト抽出"""
+        from pptx import Presentation
+        from pptx.util import Inches
+
+        prs = Presentation()
+        slide = prs.slides.add_slide(prs.slide_layouts[1])
+        slide.shapes.title.text = "プレゼンタイトル"
+        body = slide.placeholders[1]
+        body.text = "スライドの本文テキスト"
+        test_file = tmp_path / "test.pptx"
+        prs.save(str(test_file))
+        result = extract_text(str(test_file))
+        assert "プレゼンタイトル" in result
+        assert "スライドの本文テキスト" in result
+
     def test_unsupported_extension_raises_error(self, tmp_path):
         """未対応の拡張子はValueErrorを発生させる"""
         test_file = tmp_path / "test.xyz"
