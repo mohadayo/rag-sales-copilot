@@ -2,9 +2,10 @@
 
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 
-from app.core.rag import FORMAT_INSTRUCTIONS, generate_rag_response
+from app.core.rag import FORMAT_INSTRUCTIONS, _get_client, generate_rag_response
 from app.models.schemas import (
     CategoryType,
     ChatRequest,
@@ -373,3 +374,40 @@ class TestFormatInstructionsDict:
         assert "課題" in instruction
         assert "提案ポイント" in instruction
         assert "期待効果" in instruction
+
+
+class TestOpenAIClientTimeout:
+    """OpenAIクライアントのタイムアウト設定テスト"""
+
+    @patch("app.core.rag.OpenAI")
+    def test_client_created_with_timeout(self, mock_openai_cls):
+        """OpenAIクライアントがタイムアウト付きで生成される"""
+        import app.core.rag as rag_module
+        # シングルトンをリセット
+        rag_module._client = None
+
+        _get_client()
+
+        mock_openai_cls.assert_called_once()
+        call_kwargs = mock_openai_cls.call_args.kwargs
+        assert "timeout" in call_kwargs
+        timeout = call_kwargs["timeout"]
+        assert isinstance(timeout, httpx.Timeout)
+
+        # リセットして後続テストに影響を与えない
+        rag_module._client = None
+
+    @patch("app.core.rag.OpenAI")
+    def test_client_singleton_pattern(self, mock_openai_cls):
+        """_get_clientがシングルトンパターンで動作する"""
+        import app.core.rag as rag_module
+        rag_module._client = None
+
+        client1 = _get_client()
+        client2 = _get_client()
+
+        # OpenAIは1回だけ呼ばれる
+        mock_openai_cls.assert_called_once()
+        assert client1 is client2
+
+        rag_module._client = None
