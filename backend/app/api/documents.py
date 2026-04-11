@@ -117,7 +117,7 @@ async def upload_document(
             str(e),
             exc_info=True,
         )
-        raise HTTPException(status_code=500, detail=f"処理エラー: {str(e)}")
+        raise HTTPException(status_code=500, detail="ファイル処理中にエラーが発生しました。ファイルの形式をご確認のうえ再度お試しください。")
 
 
 @router.get("/", response_model=DocumentListResponse)

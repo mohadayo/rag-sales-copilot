@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000"
     chroma_persist_dir: str = "./chroma_data"
     upload_dir: str = "./uploads"
+    openai_timeout: float = 30.0
+    openai_connect_timeout: float = 10.0
 
     class Config:
         env_file = ".env"

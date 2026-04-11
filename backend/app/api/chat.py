@@ -35,4 +35,4 @@ async def chat(request: ChatRequest):
         return response
     except Exception as e:
         logger.error("チャット回答生成エラー: %s", str(e), exc_info=True)
-        raise HTTPException(status_code=500, detail=f"回答生成エラー: {str(e)}")
+        raise HTTPException(status_code=500, detail="回答生成中にエラーが発生しました。しばらく経ってから再度お試しください。")

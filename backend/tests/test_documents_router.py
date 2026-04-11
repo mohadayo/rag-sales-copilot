@@ -105,7 +105,21 @@ class TestUploadValidation:
             data={"category": "その他", "industry_tags": ""},
         )
         assert response.status_code == 500
-        assert "処理エラー" in response.json()["detail"]
+        assert "ファイル処理中にエラーが発生しました" in response.json()["detail"]
+
+    @patch("app.api.documents.extract_text", side_effect=RuntimeError("secret internal error info"))
+    def test_error_detail_not_leaked(self, mock_extract):
+        """内部エラー詳細がレスポンスに含まれないことを検証"""
+        client = _create_client()
+        response = client.post(
+            "/api/documents/upload",
+            files={"file": ("fail.txt", BytesIO(b"content"), "text/plain")},
+            data={"category": "その他", "industry_tags": ""},
+        )
+        assert response.status_code == 500
+        detail = response.json()["detail"]
+        assert "secret internal error info" not in detail
+        assert "ファイルの形式をご確認のうえ再度お試しください" in detail
 
 
 class TestListDocuments:

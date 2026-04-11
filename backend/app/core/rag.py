@@ -2,6 +2,7 @@
 
 import logging
 
+import httpx
 from openai import OpenAI
 
 from app.core.config import settings
@@ -16,7 +17,10 @@ _client: OpenAI | None = None
 def _get_client() -> OpenAI:
     global _client
     if _client is None:
-        _client = OpenAI(api_key=settings.openai_api_key)
+        _client = OpenAI(
+            api_key=settings.openai_api_key,
+            timeout=httpx.Timeout(settings.openai_timeout, connect=settings.openai_connect_timeout),
+        )
     return _client
 
 
