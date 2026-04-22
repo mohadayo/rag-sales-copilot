@@ -37,6 +37,8 @@ class DocumentUploadResponse(BaseModel):
 class DocumentListResponse(BaseModel):
     documents: list[DocumentMetadata]
     total: int
+    offset: int = 0
+    limit: int = 20
 
 
 class ChatRequest(BaseModel):

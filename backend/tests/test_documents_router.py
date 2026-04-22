@@ -128,33 +128,71 @@ class TestListDocuments:
     @patch("app.api.documents.list_documents")
     def test_list_documents_empty(self, mock_list):
         """ドキュメントなしの場合に空リストを返す"""
-        mock_list.return_value = []
+        mock_list.return_value = ([], 0)
         client = _create_client()
         response = client.get("/api/documents/")
         assert response.status_code == 200
         data = response.json()
         assert data["total"] == 0
         assert data["documents"] == []
+        assert data["offset"] == 0
+        assert data["limit"] == 20
 
     @patch("app.api.documents.list_documents")
     def test_list_documents_with_data(self, mock_list):
         """ドキュメントが存在する場合にリストを返す"""
-        mock_list.return_value = [
-            {
-                "id": "uuid-1",
-                "filename": "proposal.pdf",
-                "category": "提案書",
-                "industry_tags": ["製造業"],
-                "uploaded_at": "2026-01-01T00:00:00",
-                "chunk_count": 5,
-            },
-        ]
+        mock_list.return_value = (
+            [
+                {
+                    "id": "uuid-1",
+                    "filename": "proposal.pdf",
+                    "category": "提案書",
+                    "industry_tags": ["製造業"],
+                    "uploaded_at": "2026-01-01T00:00:00",
+                    "chunk_count": 5,
+                },
+            ],
+            1,
+        )
         client = _create_client()
         response = client.get("/api/documents/")
         assert response.status_code == 200
         data = response.json()
         assert data["total"] == 1
         assert data["documents"][0]["filename"] == "proposal.pdf"
+
+    @patch("app.api.documents.list_documents")
+    def test_list_documents_with_pagination(self, mock_list):
+        """offset/limitパラメータが正しく渡される"""
+        mock_list.return_value = ([], 10)
+        client = _create_client()
+        response = client.get("/api/documents/?offset=5&limit=3")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["offset"] == 5
+        assert data["limit"] == 3
+        assert data["total"] == 10
+        mock_list.assert_called_once_with(offset=5, limit=3)
+
+    @patch("app.api.documents.list_documents")
+    def test_list_documents_limit_capped(self, mock_list):
+        """limitの上限は100"""
+        mock_list.return_value = ([], 0)
+        client = _create_client()
+        response = client.get("/api/documents/?limit=200")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["limit"] == 100
+
+    @patch("app.api.documents.list_documents")
+    def test_list_documents_negative_offset(self, mock_list):
+        """負のoffsetは0にクランプされる"""
+        mock_list.return_value = ([], 0)
+        client = _create_client()
+        response = client.get("/api/documents/?offset=-5")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["offset"] == 0
 
 
 class TestDeleteDocument:

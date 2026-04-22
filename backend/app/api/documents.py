@@ -121,14 +121,21 @@ async def upload_document(
 
 
 @router.get("/", response_model=DocumentListResponse)
-async def get_documents():
-    """登録済み資料一覧を取得"""
-    logger.debug("ドキュメント一覧取得リクエスト")
-    docs = list_documents()
-    logger.info("ドキュメント一覧取得: %d 件", len(docs))
+async def get_documents(offset: int = 0, limit: int = 20):
+    """登録済み資料一覧を取得（ページネーション対応）"""
+    if limit > 100:
+        limit = 100
+    if offset < 0:
+        offset = 0
+
+    logger.debug("ドキュメント一覧取得リクエスト: offset=%d, limit=%d", offset, limit)
+    docs, total = list_documents(offset=offset, limit=limit)
+    logger.info("ドキュメント一覧取得: %d/%d 件", len(docs), total)
     return DocumentListResponse(
         documents=[DocumentMetadata(**doc) for doc in docs],
-        total=len(docs),
+        total=total,
+        offset=offset,
+        limit=limit,
     )
 
 

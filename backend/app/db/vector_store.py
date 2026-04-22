@@ -130,8 +130,10 @@ def delete_document(doc_id: str) -> None:
         logger.warning("ドキュメント削除: 対象チャンクが見つかりません。doc_id=%s", doc_id)
 
 
-def list_documents() -> list[dict]:
-    """登録済みドキュメント一覧を取得"""
+def list_documents(
+    offset: int = 0, limit: int = 20
+) -> tuple[list[dict], int]:
+    """登録済みドキュメント一覧を取得（ページネーション対応）"""
     collection = get_collection()
     all_data = collection.get(include=["metadatas"])
 
@@ -151,4 +153,11 @@ def list_documents() -> list[dict]:
             }
         doc_map[doc_id]["chunk_count"] += 1
 
-    return list(doc_map.values())
+    all_docs = sorted(
+        doc_map.values(),
+        key=lambda d: d.get("uploaded_at", ""),
+        reverse=True,
+    )
+    total = len(all_docs)
+    paginated = all_docs[offset:offset + limit]
+    return paginated, total
