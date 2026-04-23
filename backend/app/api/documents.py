@@ -23,8 +23,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".doc", ".pptx", ".txt", ".md"}
-MAX_FILE_SIZE_MB = 50
-MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
 
 @router.post("/upload", response_model=DocumentUploadResponse)
@@ -52,10 +50,11 @@ async def upload_document(
     content = await file.read()
 
     # ファイルサイズチェック
-    if len(content) > MAX_FILE_SIZE_BYTES:
+    max_size_bytes = settings.max_file_size_mb * 1024 * 1024
+    if len(content) > max_size_bytes:
         raise HTTPException(
             status_code=400,
-            detail=f"ファイルサイズが上限 ({MAX_FILE_SIZE_MB}MB) を超えています",
+            detail=f"ファイルサイズが上限 ({settings.max_file_size_mb}MB) を超えています",
         )
 
     logger.info(
