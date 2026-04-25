@@ -2,8 +2,11 @@
 
 import logging
 import os
+import re
+import unicodedata
 import uuid
 from datetime import datetime, timezone
+from pathlib import PurePosixPath
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
@@ -25,6 +28,17 @@ router = APIRouter(prefix="/api/documents", tags=["documents"])
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".doc", ".pptx", ".txt", ".md"}
 
 
+def sanitize_filename(filename: str) -> str:
+    """ファイル名から危険な文字やパス要素を除去する"""
+    filename = PurePosixPath(filename).name
+    filename = unicodedata.normalize("NFC", filename)
+    filename = re.sub(r'[\x00-\x1f<>:"/\\|?*]', "_", filename)
+    filename = filename.strip(". ")
+    if not filename:
+        filename = "unnamed"
+    return filename
+
+
 @router.post("/upload", response_model=DocumentUploadResponse)
 async def upload_document(
     file: UploadFile = File(...),
@@ -35,7 +49,10 @@ async def upload_document(
     if not file.filename:
         raise HTTPException(status_code=400, detail="ファイル名が必要です")
 
-    ext = os.path.splitext(file.filename)[1].lower()
+    safe_filename = sanitize_filename(file.filename)
+    logger.info("ファイル名サニタイズ: original=%s, sanitized=%s", file.filename, safe_filename)
+
+    ext = os.path.splitext(safe_filename)[1].lower()
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=400,
@@ -59,7 +76,7 @@ async def upload_document(
 
     logger.info(
         "ファイルアップロード開始: filename=%s, size=%d bytes, category=%s",
-        file.filename,
+        safe_filename,
         len(content),
         category.value,
     )
@@ -86,7 +103,7 @@ async def upload_document(
         chunk_count = add_chunks(
             doc_id=doc_id,
             chunks=chunks,
-            filename=file.filename,
+            filename=safe_filename,
             category=category.value,
             industry_tags=tags,
             uploaded_at=uploaded_at,
@@ -95,14 +112,14 @@ async def upload_document(
         logger.info(
             "ファイルアップロード完了: doc_id=%s, filename=%s, chunk_count=%d",
             doc_id,
-            file.filename,
+            safe_filename,
             chunk_count,
         )
         return DocumentUploadResponse(
             id=doc_id,
-            filename=file.filename,
+            filename=safe_filename,
             chunk_count=chunk_count,
-            message=f"{file.filename} を {chunk_count} チャンクで登録しました",
+            message=f"{safe_filename} を {chunk_count} チャンクで登録しました",
         )
     except HTTPException:
         raise
@@ -112,7 +129,7 @@ async def upload_document(
             os.remove(file_path)
         logger.error(
             "ファイルアップロードエラー: filename=%s, error=%s",
-            file.filename,
+            safe_filename,
             str(e),
             exc_info=True,
         )
