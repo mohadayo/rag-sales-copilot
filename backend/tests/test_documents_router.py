@@ -6,13 +6,44 @@ from unittest.mock import patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.documents import router
+from app.api.documents import router, sanitize_filename
 
 
 def _create_client() -> TestClient:
     app = FastAPI()
     app.include_router(router)
     return TestClient(app)
+
+
+class TestSanitizeFilename:
+    """ファイル名サニタイズのテスト"""
+
+    def test_normal_filename_unchanged(self):
+        assert sanitize_filename("report.pdf") == "report.pdf"
+
+    def test_japanese_filename_preserved(self):
+        assert sanitize_filename("提案書_v2.docx") == "提案書_v2.docx"
+
+    def test_path_traversal_removed(self):
+        assert sanitize_filename("../../../etc/passwd.txt") == "passwd.txt"
+
+    def test_backslash_path_replaced(self):
+        result = sanitize_filename("C:\\Users\\test\\doc.pdf")
+        assert "\\" not in result
+        assert result.endswith(".pdf")
+
+    def test_control_characters_replaced(self):
+        result = sanitize_filename("file\x00name\x1f.txt")
+        assert "\x00" not in result
+        assert "\x1f" not in result
+
+    def test_empty_after_strip_returns_unnamed(self):
+        assert sanitize_filename("...") == "unnamed"
+
+    def test_special_characters_replaced(self):
+        result = sanitize_filename('file<>:"|?*.txt')
+        assert "<" not in result
+        assert ">" not in result
 
 
 class TestUploadValidation:
@@ -106,6 +137,23 @@ class TestUploadValidation:
         )
         assert response.status_code == 500
         assert "ファイル処理中にエラーが発生しました" in response.json()["detail"]
+
+    @patch("app.api.documents.add_chunks", return_value=1)
+    @patch("app.api.documents.chunk_text", return_value=["chunk1"])
+    @patch("app.api.documents.extract_text", return_value="テスト本文")
+    def test_upload_sanitizes_filename(self, mock_extract, mock_chunk, mock_add):
+        """パストラバーサルを含むファイル名がサニタイズされる"""
+        client = _create_client()
+        response = client.post(
+            "/api/documents/upload",
+            files={"file": ("../../evil.txt", BytesIO(b"content"), "text/plain")},
+            data={"category": "その他", "industry_tags": ""},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["filename"] == "evil.txt"
+        _, kwargs = mock_add.call_args
+        assert kwargs["filename"] == "evil.txt"
 
     @patch("app.api.documents.extract_text", side_effect=RuntimeError("secret internal error info"))
     def test_error_detail_not_leaked(self, mock_extract):
